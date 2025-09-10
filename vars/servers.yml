@@ -1,0 +1,8 @@
+host_group: Linux servers
+hosts_to_add:
+  - { hostname: "linux-a", ip: "192.168.56.11" }
+  - { hostname: "linux-b", ip: "192.168.56.12" }
+  - { hostname: "linux-c", ip: "192.168.56.13" }
+
+services_to_add:
+  - { service: "http", port: 80}

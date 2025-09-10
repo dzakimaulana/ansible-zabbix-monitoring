@@ -1,0 +1,6 @@
+---
+# Master playbook to run everything in order
+- import_playbook: hosts.yml
+- import_playbook: services.yml
+- import_playbook: sla/create.yml
+- import_playbook: sla/delete.yml

@@ -1,0 +1,80 @@
+---
+- name: Delete SLA Reports
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - "../../vars/all.yml"
+    - "../../vars/{{ category | default('servers') }}.yml"
+
+  vars:
+    icmp_sla_name: "{{ category | title }} ICMP SLA"
+    http_sla_name: "{{ category | title }} {{ services_to_add[0].service | upper }} SLA"
+
+  tasks:
+    - name: Skip if state != absent
+      ansible.builtin.meta: end_play
+      when: state | default('present') != 'absent'
+
+    - name: Login to Zabbix API
+      ansible.builtin.uri:
+        url: "{{ zabbix_api_url }}"
+        method: POST
+        body_format: json
+        headers:
+          Content-Type: "application/json-rpc"
+        return_content: true
+        body:
+          jsonrpc: "2.0"
+          method: "user.login"
+          id: 1
+          params:
+            username: "{{ zabbix_api_user }}"
+            password: "{{ zabbix_api_password }}"
+      register: zbx_login
+
+    - name: Get SLAs by name
+      ansible.builtin.uri:
+        url: "{{ zabbix_api_url }}"
+        method: POST
+        body_format: json
+        headers:
+          Content-Type: "application/json-rpc"
+        return_content: true
+        body:
+          jsonrpc: "2.0"
+          method: "sla.get"
+          auth: "{{ zbx_login.json.result }}"
+          id: 2
+          params:
+            output: ["slaid","name","slo"]
+            filter:
+              name:
+                - "{{ icmp_sla_name }}"
+                - "{{ http_sla_name }}"
+      register: sla_list
+
+    - name: Extract slaids to delete
+      ansible.builtin.set_fact:
+        sla_ids: "{{ (sla_list.json.result | map(attribute='slaid') | list) | default([], true) }}"
+
+    - name: Show what will be deleted
+      ansible.builtin.debug:
+        msg:
+          - "Matched SLAs: {{ sla_list.json.result | map(attribute='name') | list }}"
+          - "SLA IDs: {{ sla_ids }}"
+      when: sla_ids | length > 0
+
+    - name: Delete SLAs (if any found)
+      when: sla_ids | length > 0
+      ansible.builtin.uri:
+        url: "{{ zabbix_api_url }}"
+        method: POST
+        body_format: json
+        headers:
+          Content-Type: "application/json-rpc"
+        body:
+          jsonrpc: "2.0"
+          method: "sla.delete"
+          auth: "{{ zbx_login.json.result }}"
+          id: 3
+          params: "{{ sla_ids }}"

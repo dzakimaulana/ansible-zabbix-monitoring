@@ -1,0 +1,108 @@
+---
+- name: Zabbix Services
+  hosts: zabbix_server
+  gather_facts: no
+  vars_files:
+    - ../vars/all.yml
+
+  vars:
+    ansible_network_os: community.zabbix.zabbix
+    ansible_connection: httpapi
+    ansible_httpapi_port: "{{ zabbix_api_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_api_use_ssl }}"
+    ansible_httpapi_validate_certs: false
+    ansible_zabbix_url_path: "zabbix"
+
+    category: "{{ category | default('servers') }}"
+    desired_state: "{{ state | default('present') }}"
+    action_label: "{{ 'Create or Update' if desired_state == 'present' else 'Delete' }}"
+
+  tasks:
+    - name: Load {{ category }} targets
+      ansible.builtin.include_vars:
+        file: "../vars/{{ category }}.yml"
+
+    - name: Set credentials to access Zabbix Server API
+      ansible.builtin.set_fact:
+        ansible_user: "{{ zabbix_api_user }}"
+        ansible_httpapi_pass: "{{ zabbix_api_password }}"
+    
+    - name: "{{ action_label }} {{ category }} Grandparent Service"
+      community.zabbix.zabbix_service:
+        state: "{{ desired_state }}"
+        name: "{{ category | title }} Availability"
+        algorithm: "most_crit_of_child_serv"
+        propagation_rule: "as_is"
+        propagation_value: "not_classified"
+        sortorder: "0"
+        tags:
+          - tag: service
+            value: "{{ category }}-availability"
+
+    - name: "{{ action_label }} {{ category }} Parent Service (ICMP)"
+      community.zabbix.zabbix_service:
+        state: "{{ desired_state }}"
+        name: "{{ category | title }} ICMP Availability"
+        parents: "{{ category | title }} Availability"
+        algorithm: "most_crit_of_child_serv"
+        propagation_rule: "as_is"
+        propagation_value: "not_classified"
+        sortorder: "0"
+        tags:
+          - tag: service
+            value: "{{ category }}-icmp-availability"
+    
+    - name: "{{ action_label }} {{ category }} Childrens Service (ICMP)"
+      loop: "{{ hosts_to_add }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+      community.zabbix.zabbix_service:
+        state: "{{ desired_state }}"
+        name: "{{ item.hostname }} ICMP Availability"
+        parents: "{{ category | title }} ICMP Availability"
+        propagation_rule: "as_is"
+        propagation_value: "not_classified"
+        sortorder: "10"
+        problem_tags:
+          - tag: host
+            value: "{{ item.hostname }}"
+          - tag: target
+            value: icmp
+        tags:
+          - tag: service
+            value: "{{ item.hostname }}-icmp"
+    
+    - name: "{{ action_label }} {{ category }} Parent Service {{ services_to_add[0].service | upper }}"
+      community.zabbix.zabbix_service:
+        state: "{{ desired_state }}"
+        name: "{{ category | title }} {{ services_to_add[0].service | upper }} Availability"
+        parents: "{{ category | title }} Availability"
+        algorithm: "most_crit_of_child_serv"
+        propagation_rule: "as_is"
+        propagation_value: "not_classified"
+        sortorder: "0"
+        tags:
+          - tag: service
+            value: "{{ category }}-{{ services_to_add[0].service }}-availability"
+    
+    - name: "{{ action_label }} {{ category }} Childrens Service {{ services_to_add[0].service | upper }}"
+      loop: "{{ hosts_to_add }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+      community.zabbix.zabbix_service:
+        state: "{{ desired_state }}"
+        name: "{{ item.hostname }} {{ services_to_add[0].service | upper }} Availability"
+        parents: "{{ category | title }} {{ services_to_add[0].service | upper }} Availability"
+        propagation_rule: "as_is"
+        propagation_value: "not_classified"
+        sortorder: "10"
+        problem_tags:
+          - tag: host
+            value: "{{ item.hostname }}"
+          - tag: target
+            value: "http_https"
+          - tag: port
+            value: "{{ services_to_add[0].port }}"
+        tags:
+          - tag: service
+            value: "{{ item.hostname }}-{{ services_to_add[0].service }}"

@@ -1,0 +1,84 @@
+---
+- name: Zabbix Templates HTTP/HTTPS
+  hosts: zabbix_server
+  gather_facts: no
+  vars_files:
+    - ../vars/all.yml
+
+  vars:
+    ansible_network_os: community.zabbix.zabbix
+    ansible_connection: httpapi
+    ansible_httpapi_port: "{{ zabbix_api_port }}"
+    ansible_httpapi_use_ssl: "{{ zabbix_api_use_ssl }}"
+    ansible_httpapi_validate_certs: false
+    ansible_zabbix_url_path: "zabbix"
+
+    custom_template: "HTTP or HTTPS Check"
+    interval_time: "5s"
+
+    desired_state: "{{ state | default('present') }}"
+    action_label: "{{ 'Create or Update' if desired_state == 'present' else 'Delete' }}"
+    
+    services_to_add:
+      - { service: "http", port: 80 }
+      - { service: "https", port: 443 }
+      - { service: "http", port: 9200 }
+
+  tasks:
+    - name: Set credentials to access Zabbix Server API
+      ansible.builtin.set_fact:
+        ansible_user: "{{ zabbix_api_user }}"
+        ansible_httpapi_pass: "{{ zabbix_api_password }}"
+
+    - name: "{{ action_label }} Template HTTP/HTTPS Availability"
+      community.zabbix.zabbix_template:
+        state: "{{ desired_state }}"
+        template_name: "{{ custom_template }}"
+        template_groups: 
+          - Templates/Applications
+        macros:
+          - macro: "{$TARGET_IP}"
+            value: "<SET HOST>"
+          - macro: "{$DELAY}"
+            value: "{{ interval_time }}"
+        tags:
+          - tag: class
+            value: application
+          - tag: target
+            value: http_https
+    
+    - name: "{{ action_label }} Items HTTP/HTTPS Availability"
+      loop: "{{ services_to_add }}"
+      loop_control:
+        label: "{{ item.port }}"
+      community.zabbix.zabbix_item:
+        state: "{{ desired_state }}"
+        name: "{{ item.service | upper }} {{ item.port }} alive"
+        template_name: "{{ custom_template }}"
+        params:
+            type: simple_check
+            key: "net.tcp.service[{{ item.service }},{$TARGET_IP},{{ item.port }}]"
+            value_type: numeric_unsigned
+            interval: "{{ interval_time }}"
+            tags:
+              - tag: component
+                value: health
+              - tag: service
+                value: "{{ item.service }}"
+              - tag: port
+                value: "{{ item.port }}"
+    
+    - name: "{{ action_label }} Triggers HTTP/HTTPS Availability"
+      loop: "{{ services_to_add }}"
+      loop_control:
+        label: "{{ item.port }}"
+      community.zabbix.zabbix_trigger:
+        state: "{{ desired_state }}"
+        name: "{{ item.service | upper }} {{ item.port }}: Service is down"
+        template_name: "{{ custom_template }}"
+        params:
+            severity: high
+            expression: "last(/{{ custom_template }}/net.tcp.service[{{ item.service }},{$TARGET_IP},{{ item.port }}])=0"
+            tags:
+              - tag: scope
+                value: availability

@@ -1,0 +1,90 @@
+---
+- name: Create SLA Reports
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - "../../vars/all.yml"
+    - "../../vars/{{ category | default('servers') }}.yml"
+  
+  vars:
+    sla_effective_epoch: 1756944000  # 2025-09-04 00:00:00 UTC
+  
+  tasks:
+    - name: Skip if state != present
+      ansible.builtin.meta: end_play
+      when: state | default('present') != 'present'
+      
+    - name: Login to Zabbix API
+      ansible.builtin.uri:
+        url: "{{ zabbix_api_url }}"        # contoh: http://10.20.2.4/zabbix/api_jsonrpc.php
+        method: POST
+        body_format: json
+        headers:
+          Content-Type: "application/json-rpc"
+        return_content: true
+        body:
+          jsonrpc: "2.0"
+          method: "user.login"
+          id: 1
+          params:
+            username: "{{ zabbix_api_user }}"
+            password: "{{ zabbix_api_password }}"
+      register: zbx_login
+    
+    - name: Build service_tags (host ICMP)
+      ansible.builtin.set_fact:
+        icmp_service_tags: "{{ (icmp_service_tags | default([])) + [ {'tag':'service','value': item.hostname ~ '-icmp'} ] }}"
+      loop: "{{ hosts_to_add }}"
+
+    - name: Create {{ category | title }} ICMP SLA (weekly, 24x7)
+      ansible.builtin.uri:
+        url: "{{ zabbix_api_url }}"
+        method: POST
+        body_format: json
+        headers:
+          Content-Type: "application/json-rpc"
+        body:
+          jsonrpc: "2.0"
+          method: "sla.create"
+          auth: "{{ zbx_login.json.result }}"
+          id: 2
+          params:
+            - name: "{{ category | title }} ICMP SLA"
+              description: "Weekly ICMP SLA for All {{ category | title }} Services"
+              slo: "99.0"
+              period: "1"                 # 0=daily, 1=weekly, 2=monthly, 3=quarterly, 4=annually
+              timezone: "Asia/Jakarta"
+              effective_date: "{{ sla_effective_epoch }}"
+              status: 1
+              schedule: []
+              service_tags: "{{ icmp_service_tags }}"
+      register: parent_sla_create
+    
+    - name: Build service_tags (host HTTP or HTTPS)
+      ansible.builtin.set_fact:
+        http_service_tags: "{{ (http_service_tags | default([])) + [ {'tag':'service','value': item.hostname ~ '-' ~ services_to_add[0].service} ] }}"
+      loop: "{{ hosts_to_add }}"
+
+    - name: Create {{ category | title }} HTTP SLA (weekly, 24x7)
+      ansible.builtin.uri:
+        url: "{{ zabbix_api_url }}"
+        method: POST
+        body_format: json
+        headers:
+          Content-Type: "application/json-rpc"
+        body:
+          jsonrpc: "2.0"
+          method: "sla.create"
+          auth: "{{ zbx_login.json.result }}"
+          id: 3
+          params:
+            - name: "{{ category | title }} {{ services_to_add[0].service | upper }} SLA"
+              description: "Weekly {{ services_to_add[0].service | upper }} SLA for All {{ category | title }} Services"
+              slo: "99.0"
+              period: "1"                 # 0=daily, 1=weekly, 2=monthly, 3=quarterly, 4=annually
+              timezone: "Asia/Jakarta"
+              effective_date: "{{ sla_effective_epoch }}"
+              status: 1
+              schedule: []
+              service_tags: "{{ http_service_tags }}"
+      register: parent_sla_create
