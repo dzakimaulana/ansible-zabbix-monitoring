@@ -55,4 +55,4 @@ ansible-playbook -i inventory.ini playbooks/site.yml -e category=servers -e stat
 
 After running the playbook, hosts are added into Zabbix automatically and can be included in SLA reports.  
 
-![Zabbix SLA Report](result/example-sla-report.jpg)
+![Zabbix SLA Report](results/example-sla-report.jpg)
