@@ -1,20 +1,58 @@
 # Ansible Zabbix Monitoring
 
-Automates host onboarding and monitoring setup in **Zabbix** using **Ansible**.  
-This project provides playbooks to add multiple hosts, apply templates, and configure health checks such as **ICMP ping** and **HTTP 200 response**.
+Automate adding and removing hosts in **Zabbix** using **Ansible**.
 
 ---
 
 ## ✨ Features
-- Bulk add servers, firewalls, or other devices into Zabbix.
-- Apply **ICMP Ping** monitoring automatically.
-- Configure **HTTP 200 response checks** for web servers.
-- Simple teardown with `state=absent` (no manual cleanup).
-- Flexible: separate variables per category (servers, firewalls, etc.).
+
+* Add multiple servers, firewalls, or devices at once.
+* Apply **ICMP Ping** and **HTTP 200 checks** automatically.
+* Easy cleanup with `state=absent`.
+* Separate variables per category (e.g., servers, firewalls).
 
 ---
 
 ## 📦 Requirements
-- **Ansible**: 2.17.4 or later  
-- **community.zabbix collection**: 3.3.0  
-- Zabbix server with API access
+
+* **Ansible** ≥ 2.17.4
+* **community.zabbix** collection ≥ 4.1.1
+* Zabbix server with API access
+
+Install collection:
+
+```bash
+ansible-galaxy collection install community.zabbix:>=4.1.1
+```
+
+---
+
+## 🚀 Usage
+
+### Add or update hosts
+
+```bash
+ansible-playbook -i inventory.ini playbooks/site.yml -e category=servers
+```
+
+### Delete hosts
+
+```bash
+ansible-playbook -i inventory.ini playbooks/site.yml -e category=servers -e state=absent
+```
+
+---
+
+## ✅ Benefits
+
+* Saves time when onboarding many hosts.
+* Ensures ICMP and HTTP/HTTPS checks are always consistent.
+* Useful for SLA reports (uptime based on ICMP/HTTP monitoring).
+
+---
+
+## 📊 Example Result
+
+After running the playbook, hosts are added into Zabbix automatically and can be included in SLA reports.  
+
+![Zabbix SLA Report](result/example-sla-report.jpg)
